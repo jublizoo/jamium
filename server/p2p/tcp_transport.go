@@ -115,7 +115,7 @@ func (k *KVCluster) handleConnection(conn net.Conn) {
 		Conn: conn,
 	}
 
-	k.peers[conn.LocalAddr] = &peer
+	k.peers[conn.RemoteAddr().String()] = &peer
 
 	for {
 		var buf []byte
@@ -156,7 +156,6 @@ func handleMessage(msg Message) error {
 
 	return nil
 }
-
 
 # Request for KV
 func (k * KVCluster) handleClientRequest(key: string) error {

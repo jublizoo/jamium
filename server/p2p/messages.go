@@ -23,6 +23,7 @@ type Heartbeat struct{}
 type InitRequest struct {}
 
 type InitResponse struct {
+	Success bool
 	HashIndex int
 }
 
