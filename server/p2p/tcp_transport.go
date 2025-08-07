@@ -17,11 +17,15 @@ type Peer struct {
 	hashInterval int
 }
 
-func (p *Peer) Write(b []byte) (int, error) {
-	return p.Conn.Write(byte)
+func (p *Peer) getRemoteAddr() string {
+	return p.Conn.RemoteAddr().String()
 }
 
-func (p *Peer) SendRPC(from string, payload Any) error {
+func (p *Peer) Write(b []byte) (int, error) {
+	return p.Conn.Write(b)
+}
+
+func (p *Peer) SendRPC(from string, payload any) error {
 	msg := Message{
 		Payload: payload,	
 	}		
@@ -49,20 +53,54 @@ func (p *Peer) handleDisconnect(err error) {
 }
 
 type KVCluster struct {
+	localAddr *string
 	peers   map[string](*Peer)
 	rpcch   chan *RPC
 	closech chan struct{}
 }
 
-func createKVCluster() *KVCluster {
+func createKVCluster() (*KVCluster, error) {
+	localAddr, err := getLocalAddr()
+	if err != nil {
+		return nil, err
+	}
+
 	cluster := KVCluster{
+		localAddr: &localAddr,
 		peers:   make(map[string](*Peer)),
 		rpcch:   make(chan *RPC),
 		closech: make(chan struct{}),
 	}
 
-	return &cluster
+	return &cluster, nil
 }
+
+func (k *KVCluster) getNumPeers() int {
+	return len(k.peers)
+}
+
+func (k *KVCluster) getLocalAddr() (string, error) {
+	go listenToSelf()
+	conn, err := net.Dial("tcp", ":8080")
+	if err != nil {
+		return "", err
+	}
+	return conn.LocalAddr().String(), nil
+}
+
+func listenToSelf() error {
+	listener, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		return err
+	}
+	_, err = listener.Accept()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 
 // TODO: Get remote address
 func (k *KVCluster) sendHeartbeat(peer *Peer) {
@@ -136,16 +174,21 @@ func (k *KVCluster) handleConnection(conn net.Conn) {
 
 func (k *KVCluster) RPCLoop() {
 	for {
-		rpc := <- k.rpcch
-		var msg Message
-		decoder := gob.NewDecoder(bytes.NewReader(rpc.Payload))
-		decoder.Decode(&msg)
-		handleMessage(msg)		
+		select {
+		case rpc := <- k.rpcch:
+			var msg Message
+			decoder := gob.NewDecoder(bytes.NewReader(rpc.Payload))
+			decoder.Decode(&msg)
+			handleMessage(msg)		
+		case <- k.closech:
+			// TODO: alert peers of closing? Alternatively they could auto-detect
+			return
+		}
 	}
 }
 
 func handleMessage(msg Message) error {
-	switch m := Message.Payload.(type) {
+	switch m := msg.Payload.(type) {
 	case TestMessage:
 		fmt.Println("Received test message with message", m.Message, "and test number", m.TestNumber)
 	default:
@@ -157,13 +200,13 @@ func handleMessage(msg Message) error {
 	return nil
 }
 
-# Request for KV
-func (k * KVCluster) handleClientRequest(key: string) error {
-	
+// Request for KV
+func (k * KVCluster) handleClientRequest(key string) error {
+	return nil
 }
 
 func (k *KVCluster) onPeerClose() {
-
+	
 }
 
 func (k *KVCluster) Close() {
@@ -180,6 +223,3 @@ func (k *KVCluster) localEventLoop() {
 	}
 }
 
-func handleMessage(message RPC) {
-
-}
